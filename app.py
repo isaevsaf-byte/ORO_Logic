@@ -648,16 +648,16 @@ enable_supplier_pool = st.toggle(
 if enable_supplier_pool:
     st.info("Define suppliers with their logic type, supplier type, and buying channels. Each buying channel should be a separate row.")
     
-    # Initialize suppliers_df in session state if not exists
+    # Initialize suppliers_df in session state if not exists - start with completely empty row
     if 'suppliers_df' not in st.session_state or st.session_state.suppliers_df.empty:
         st.session_state.suppliers_df = pd.DataFrame([
             {
                 "Supplier Name": "", 
                 "Vendor Code": "", 
-                "Supplier Type": "Local",
-                "Logic Type": "Buying Channel",
-                "Buying Channel": "Hosted Catalog",
-                "Tender Required": "No",
+                "Supplier Type": "",
+                "Logic Type": "",
+                "Buying Channel": "",
+                "Tender Required": "",
                 "Comments": ""
             }
         ])
@@ -686,28 +686,28 @@ if enable_supplier_pool:
         ),
         "Supplier Type": st.column_config.SelectboxColumn(
             "Supplier Type",
-            options=["Local", "Global"],
+            options=["", "Local", "Global"],
             required=False,
-            default="Local"
+            default=""
         ),
         "Logic Type": st.column_config.SelectboxColumn(
             "Logic Type",
-            options=["Buying Channel", "Sourcing"],
+            options=["", "Buying Channel", "Sourcing"],
             required=False,
-            default="Buying Channel",
+            default="",
             help="Buying Channel: Direct purchase. Sourcing: Requires sourcing process."
         ),
         "Buying Channel": st.column_config.SelectboxColumn(
             "Buying Channel",
-            options=["Hosted Catalog", "Punch-out", "Web Form", "Free Text", "P-Card"],
+            options=["", "Hosted Catalog", "Punch-out", "Web Form", "Free Text", "P-Card"],
             required=False,
-            default="Hosted Catalog"
+            default=""
         ),
         "Tender Required": st.column_config.SelectboxColumn(
             "Tender Required",
-            options=["No", "Yes - Every Time", "Yes - Above Threshold"],
+            options=["", "No", "Yes - Every Time", "Yes - Above Threshold"],
             required=False,
-            default="No",
+            default="",
             help="Whether this supplier requires a tender process"
         ),
         "Comments": st.column_config.TextColumn(
@@ -751,15 +751,16 @@ suppliers_for_viz = suppliers_df_filtered if 'suppliers_df_filtered' in locals()
 
 if suppliers_for_viz is not None and not suppliers_for_viz.empty:
     for idx, row in suppliers_for_viz.iterrows():
-        if row.get("Supplier Name") and str(row.get("Supplier Name")).strip():
+        supplier_name = str(row.get("Supplier Name", "")).strip()
+        if supplier_name:
             node_id = f"Supp{idx}"
             supp_node_ids.append(node_id)
             # Sanitize text for Mermaid
             channel_clean = str(row.get("Buying Channel", "")).replace(":", "-").replace("<", "").replace(">", "").replace('"', "'")
-            name_clean = str(row.get("Supplier Name", "")).replace(":", "-").replace("<", "").replace(">", "").replace('"', "'")
-            supp_type = str(row.get("Supplier Type", "Local"))
-            logic_type = str(row.get("Logic Type", "Buying Channel"))
-            tender = str(row.get("Tender Required", "No"))
+            name_clean = supplier_name.replace(":", "-").replace("<", "").replace(">", "").replace('"', "'")
+            supp_type = str(row.get("Supplier Type", "")).strip() or "Local"
+            logic_type = str(row.get("Logic Type", "")).strip() or "Buying Channel"
+            tender = str(row.get("Tender Required", "")).strip() or "No"
             supp_nodes_list.append(f'    {node_id}["{supp_type} {name_clean}\\n{channel_clean}\\n{logic_type}\\nTender: {tender}"]')
             
             # Categorize by supplier type and logic type
@@ -803,12 +804,11 @@ with col_green:
         st.write("#### Buying Channels Configuration")
         st.info("Specify buying channels for suppliers. Each channel should be a separate row.")
         
-        # Initialize buying_channels_df in session state if not exists
+        # Initialize buying_channels_df in session state if not exists - start with empty row
         if 'buying_channels_df' not in st.session_state:
             st.session_state.buying_channels_df = pd.DataFrame([
                 {
-                    "Channel Name": "Hosted Catalog",
-                    "Channel Type": "Hosted Catalog",
+                    "Channel Type": "",
                     "Supplier": "",
                     "Vendor Code": "",
                     "Link": "",
@@ -816,18 +816,18 @@ with col_green:
                 }
             ])
         
-        # Data Editor for Buying Channels
+        # Data Editor for Buying Channels - only Channel Type column
         buying_channel_config = {
-            "Channel Name": st.column_config.TextColumn("Channel Name", required=True),
             "Channel Type": st.column_config.SelectboxColumn(
                 "Channel Type",
-                options=["Hosted Catalog", "Punch-out", "Web Form", "Free Text", "P-Card"],
-                required=True
+                options=["", "Hosted Catalog", "Punch-out", "Web Form", "Free Text", "P-Card"],
+                required=False,
+                default=""
             ),
-            "Supplier": st.column_config.TextColumn("Supplier (Optional)"),
-            "Vendor Code": st.column_config.TextColumn("Vendor Code (Optional)"),
-            "Link": st.column_config.TextColumn("Link/URL (Optional)"),
-            "Comments": st.column_config.TextColumn("Comments"),
+            "Supplier": st.column_config.TextColumn("Supplier (Optional)", default=""),
+            "Vendor Code": st.column_config.TextColumn("Vendor Code (Optional)", default=""),
+            "Link": st.column_config.TextColumn("Link/URL (Optional)", default=""),
+            "Comments": st.column_config.TextColumn("Comments", default=""),
         }
         
         buying_channels_df = st.data_editor(
@@ -849,7 +849,7 @@ with col_green:
             mkp_limit = st.number_input("Auto-Approve Limit (£)", value=500, step=100, key="mkp_limit_input")
     else:
         # Buying channels disabled - create empty DataFrame
-        buying_channels_df = pd.DataFrame(columns=["Channel Name", "Channel Type", "Supplier", "Vendor Code", "Link", "Comments"])
+        buying_channels_df = pd.DataFrame(columns=["Channel Type", "Supplier", "Vendor Code", "Link", "Comments"])
         allow_mkp = False
         mkp_limit = 0
     
@@ -948,15 +948,16 @@ else:
 
     if enable_supplier_pool_val and 'suppliers_df' in locals() and suppliers_df is not None and not suppliers_df.empty:
         for idx, row in suppliers_df.iterrows():
-            if row.get("Supplier Name") and str(row.get("Supplier Name")).strip():
+            supplier_name = str(row.get("Supplier Name", "")).strip()
+            if supplier_name:
                 node_id = f"Supp{idx}"
                 supp_node_ids.append(node_id)
                 # Sanitize text for Mermaid
                 channel_clean = str(row.get("Buying Channel", "")).replace(":", "-").replace("<", "").replace(">", "").replace('"', "'")
-                name_clean = str(row.get("Supplier Name", "")).replace(":", "-").replace("<", "").replace(">", "").replace('"', "'")
-                supp_type = str(row.get("Supplier Type", "Local"))
-                logic_type = str(row.get("Logic Type", "Buying Channel"))
-                tender = str(row.get("Tender Required", "No"))
+                name_clean = supplier_name.replace(":", "-").replace("<", "").replace(">", "").replace('"', "'")
+                supp_type = str(row.get("Supplier Type", "")).strip() or "Local"
+                logic_type = str(row.get("Logic Type", "")).strip() or "Buying Channel"
+                tender = str(row.get("Tender Required", "")).strip() or "No"
                 
                 # Create node label
                 node_label = f"{name_clean}\\n{channel_clean}"
@@ -996,9 +997,10 @@ else:
         "    Start([User Request]) --> CheckTaxonomy{Taxonomy Match?}",
     ]
 
-    # Truncate category path for display
-    cat_display_short = (cat_path_display[:40] + "...") if len(cat_path_display) > 40 else cat_path_display
-    mermaid_lines.append(f'    CheckTaxonomy -->|Yes| CheckTaxonomyYes["Category: {cat_display_short}"]')
+    # Use full category path for display (no truncation)
+    # Escape special characters for Mermaid
+    cat_display_clean = cat_path_display.replace('"', "'").replace('\n', ' ')
+    mermaid_lines.append(f'    CheckTaxonomy -->|Yes| CheckTaxonomyYes["Category: {cat_display_clean}"]')
     mermaid_lines.append("    CheckTaxonomy -->|No| Reject[Reject Request]")
 
     # Get supplier type filter
@@ -1339,10 +1341,9 @@ if st.session_state.show_output:
                 # Sheet 3: Buying Channels
                 ws3_bc = wb.create_sheet("Buying Channels")
                 if output_data["buying_channels"]["channels"]:
-                    ws3_bc.append(["Channel Name", "Channel Type", "Supplier", "Vendor Code", "Link", "Comments"])
+                    ws3_bc.append(["Channel Type", "Supplier", "Vendor Code", "Link", "Comments"])
                     for ch in output_data["buying_channels"]["channels"]:
                         ws3_bc.append([
-                            ch.get("Channel Name", ""),
                             ch.get("Channel Type", ""),
                             ch.get("Supplier", ""),
                             ch.get("Vendor Code", ""),
@@ -1408,8 +1409,9 @@ if st.session_state.show_output:
         ["End Markets", len(output_data['scope']['end_markets'])],
         ["Business User Markets", len(output_data['scope']['business_user_markets'])],
         ["Category", output_data['category']['full_path']],
-        ["Suppliers", len(output_data['stream1']['suppliers'])],
-        ["Marketplace Enabled", "Yes" if output_data['stream1']['allow_marketplace'] else "No"],
+        ["Suppliers", len(output_data['supplier_pool']['suppliers'])],
+        ["Buying Channels", len(output_data['buying_channels']['channels'])],
+        ["Marketplace Enabled", "Yes" if output_data['buying_channels']['allow_marketplace'] else "No"],
         ["Tactical Threshold", f"£{output_data['stream2']['tactical_threshold']}"],
     ], columns=["Item", "Value"])
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
