@@ -876,23 +876,63 @@ with col_red:
         
         st.markdown("---")
         st.markdown(f"**📉 Tactical (< £{threshold})**")
-        tact_action = st.selectbox("Tactical Action", 
-                                   ["Fairmarkit (Autonomous)", "3-Bids (Local Buyer)", "Spot Buy Desk", "No-Touch PO"],
-                                   key="tact_action_select")
+        
+        # Toggle for Tactical
+        enable_tactical = st.toggle("Enable Tactical", value=True, key="enable_tactical")
+        
+        if enable_tactical:
+            tact_action = st.selectbox("Tactical Action", 
+                                       ["Fairmarkit (Autonomous)", "3-Bids (Local Buyer)", "Spot Buy Desk", "No-Touch PO"],
+                                       key="tact_action_select")
+            
+            tact_manager = st.text_input("Sourcing Manager Name (Optional)", 
+                                        placeholder="e.g., John Smith", 
+                                        key="tact_manager_input")
+            
+            tact_comments = st.text_area("Tactical Comments", 
+                                        placeholder="Add any comments or notes for tactical sourcing...", 
+                                        key="tact_comments_text_area")
+        else:
+            tact_action = "N/A"
+            tact_manager = ""
+            tact_comments = ""
         
         st.markdown("---")
         st.markdown(f"**📈 Strategic (> £{threshold})**")
-        strat_action = st.selectbox("Strategic Owner", 
-                                    ["Global Category Lead", "Sourcing Manager", "Regional Hub", "RFP Team"],
-                                    key="strat_action_select")
+        
+        # Toggle for Strategic
+        enable_strategic = st.toggle("Enable Strategic", value=True, key="enable_strategic")
+        
+        if enable_strategic:
+            strat_action = st.selectbox("Strategic Owner", 
+                                        ["Global Category Lead", "Sourcing Manager", "Regional Hub", "RFP Team"],
+                                        key="strat_action_select")
+            
+            strat_manager = st.text_input("Sourcing Manager Name (Optional)", 
+                                         placeholder="e.g., Jane Doe", 
+                                         key="strat_manager_input")
+            
+            strat_comments = st.text_area("Strategic Comments", 
+                                         placeholder="Add any comments or notes for strategic sourcing...", 
+                                         key="strat_comments_text_area")
+        else:
+            strat_action = "N/A"
+            strat_manager = ""
+            strat_comments = ""
         
         st.markdown("---")
         instr = st.text_area("SDC / Desk Instructions", placeholder="e.g. Mandatory to use RFP template B...", key="instr_text_area")
     else:
         # Stream 2 disabled - set default values
         threshold = 10000
+        enable_tactical = False
+        enable_strategic = False
         tact_action = "N/A"
         strat_action = "N/A"
+        tact_manager = ""
+        strat_manager = ""
+        tact_comments = ""
+        strat_comments = ""
         instr = ""
     
     st.markdown('</div>', unsafe_allow_html=True)
@@ -985,8 +1025,12 @@ else:
     allow_mkp_val = allow_mkp if 'allow_mkp' in locals() and enable_buying_channels_val else False
     mkp_limit_val = mkp_limit if 'mkp_limit' in locals() and enable_buying_channels_val else 0
     threshold_val = threshold if 'threshold' in locals() and enable_stream2_val else 10000
-    tact_action_val = tact_action if 'tact_action' in locals() and enable_stream2_val else "N/A"
-    strat_action_val = strat_action if 'strat_action' in locals() and enable_stream2_val else "N/A"
+    enable_tactical_val = enable_tactical if 'enable_tactical' in locals() and enable_stream2_val else False
+    enable_strategic_val = enable_strategic if 'enable_strategic' in locals() and enable_stream2_val else False
+    tact_action_val = tact_action if 'tact_action' in locals() and enable_stream2_val and enable_tactical_val else "N/A"
+    strat_action_val = strat_action if 'strat_action' in locals() and enable_stream2_val and enable_strategic_val else "N/A"
+    tact_manager_val = tact_manager if 'tact_manager' in locals() and enable_stream2_val and enable_tactical_val else ""
+    strat_manager_val = strat_manager if 'strat_manager' in locals() and enable_stream2_val and enable_strategic_val else ""
 
     # Get category path for display
     cat_path_display = full_cat_path if 'full_cat_path' in locals() else "N/A"
@@ -1146,10 +1190,29 @@ else:
             "    subgraph SourcingBox [Sourcing Logic]",
             "        direction TB",
             "        Sourcing(Start Sourcing) --> CheckThresh{> £" + str(threshold_val) + "?}",
-            f'        CheckThresh -->|No| Tactical["Tactical: {tact_action_val}"]',
-            f'        CheckThresh -->|Yes| Strategic["Strategic: {strat_action_val}"]',
-            "    end",
         ])
+        
+        # Handle Tactical path
+        if enable_tactical_val:
+            tact_label = f"Tactical: {tact_action_val}"
+            if tact_manager_val:
+                manager_clean = tact_manager_val.replace(':', '-').replace('"', "'")
+                tact_label += f"\\nManager: {manager_clean}"
+            mermaid_lines.append(f'        CheckThresh -->|No| Tactical["{tact_label}"]')
+        else:
+            mermaid_lines.append('        CheckThresh -->|No| RejectTactical[Reject - Tactical Disabled]')
+        
+        # Handle Strategic path
+        if enable_strategic_val:
+            strat_label = f"Strategic: {strat_action_val}"
+            if strat_manager_val:
+                manager_clean = strat_manager_val.replace(':', '-').replace('"', "'")
+                strat_label += f"\\nManager: {manager_clean}"
+            mermaid_lines.append(f'        CheckThresh -->|Yes| Strategic["{strat_label}"]')
+        else:
+            mermaid_lines.append('        CheckThresh -->|Yes| RejectStrategic[Reject - Strategic Disabled]')
+        
+        mermaid_lines.append("    end")
 
     # Add styling
     mermaid_lines.extend([
@@ -1167,8 +1230,15 @@ else:
     if allow_mkp_val:
         mermaid_lines.append("    class GoMKP green")
     if enable_stream2_val:
-        mermaid_lines.append("    class Tactical,Strategic red")
-    mermaid_lines.append("    class Reject,RejectSourcing,RejectAll red")
+        # Style tactical and strategic nodes only if enabled
+        style_nodes = []
+        if enable_tactical_val:
+            style_nodes.append("Tactical")
+        if enable_strategic_val:
+            style_nodes.append("Strategic")
+        if style_nodes:
+            mermaid_lines.append(f"    class {','.join(style_nodes)} red")
+    mermaid_lines.append("    class Reject,RejectSourcing,RejectAll,RejectTactical,RejectStrategic red")
     mermaid_lines.append("    class CheckTaxonomy,CheckSuppType blue")
 
     mermaid_code = "\n".join(mermaid_lines)
@@ -1260,8 +1330,18 @@ if st.session_state.show_output:
         "stream2": {
             "enabled": enable_stream2 if 'enable_stream2' in locals() else True,
             "tactical_threshold": threshold if 'threshold' in locals() else 0,
-            "tactical_action": tact_action if 'tact_action' in locals() else "N/A",
-            "strategic_owner": strat_action if 'strat_action' in locals() else "N/A",
+            "tactical": {
+                "enabled": enable_tactical if 'enable_tactical' in locals() else False,
+                "action": tact_action if 'tact_action' in locals() else "N/A",
+                "manager": tact_manager if 'tact_manager' in locals() else "",
+                "comments": tact_comments if 'tact_comments' in locals() else ""
+            },
+            "strategic": {
+                "enabled": enable_strategic if 'enable_strategic' in locals() else False,
+                "owner": strat_action if 'strat_action' in locals() else "N/A",
+                "manager": strat_manager if 'strat_manager' in locals() else "",
+                "comments": strat_comments if 'strat_comments' in locals() else ""
+            },
             "instructions": instr if 'instr' in locals() else ""
         },
         "metadata": {
@@ -1318,8 +1398,15 @@ if st.session_state.show_output:
                 ws1.append(["Marketplace Limit", output_data["buying_channels"]["marketplace_limit"]])
                 ws1.append(["Stream 2 Enabled", output_data["stream2"]["enabled"]])
                 ws1.append(["Tactical Threshold", output_data["stream2"]["tactical_threshold"]])
-                ws1.append(["Tactical Action", output_data["stream2"]["tactical_action"]])
-                ws1.append(["Strategic Owner", output_data["stream2"]["strategic_owner"]])
+                ws1.append(["Tactical Enabled", output_data["stream2"]["tactical"]["enabled"]])
+                ws1.append(["Tactical Action", output_data["stream2"]["tactical"]["action"]])
+                ws1.append(["Tactical Manager", output_data["stream2"]["tactical"]["manager"]])
+                ws1.append(["Tactical Comments", output_data["stream2"]["tactical"]["comments"]])
+                ws1.append(["Strategic Enabled", output_data["stream2"]["strategic"]["enabled"]])
+                ws1.append(["Strategic Owner", output_data["stream2"]["strategic"]["owner"]])
+                ws1.append(["Strategic Manager", output_data["stream2"]["strategic"]["manager"]])
+                ws1.append(["Strategic Comments", output_data["stream2"]["strategic"]["comments"]])
+                ws1.append(["SDC / Desk Instructions", output_data["stream2"]["instructions"]])
                 
                 # Sheet 2: Suppliers
                 ws2 = wb.create_sheet("Suppliers")
