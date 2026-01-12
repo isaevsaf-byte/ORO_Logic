@@ -845,13 +845,80 @@ with col_green:
         st.write("#### Marketplace Logic")
         allow_mkp = st.toggle("Allow Amazon / Marketplace?", key="allow_mkp_toggle")
         mkp_limit = 0
+        mkp_blacklist = []
         if allow_mkp:
             mkp_limit = st.number_input("Auto-Approve Limit (£)", value=500, step=100, key="mkp_limit_input")
+            
+            st.markdown("---")
+            st.write("#### Marketplace Blacklist")
+            st.caption("Items in the blacklist will not be allowed for marketplace purchases, regardless of the limit.")
+            
+            # Initialize blacklist DataFrame in session state if not exists
+            if 'mkp_blacklist_df' not in st.session_state:
+                st.session_state.mkp_blacklist_df = pd.DataFrame([
+                    {
+                        "Item Name": "",
+                        "Item Code/SKU": "",
+                        "Category": "",
+                        "Reason": ""
+                    }
+                ])
+            
+            # Data Editor for Blacklist Items
+            blacklist_config = {
+                "Item Name": st.column_config.TextColumn(
+                    "Item Name",
+                    required=False,
+                    default=""
+                ),
+                "Item Code/SKU": st.column_config.TextColumn(
+                    "Item Code/SKU (Optional)",
+                    default=""
+                ),
+                "Category": st.column_config.TextColumn(
+                    "Category (Optional)",
+                    default=""
+                ),
+                "Reason": st.column_config.TextColumn(
+                    "Reason for Blacklist",
+                    default="",
+                    help="Explain why this item is blacklisted"
+                ),
+            }
+            
+            mkp_blacklist_df = st.data_editor(
+                st.session_state.mkp_blacklist_df,
+                column_config=blacklist_config,
+                num_rows="dynamic",
+                use_container_width=True,
+                hide_index=True,
+                key="mkp_blacklist_editor"
+            )
+            
+            # Update session state
+            st.session_state.mkp_blacklist_df = mkp_blacklist_df.copy()
+            
+            # Convert to list of dictionaries, filtering out empty rows
+            mkp_blacklist = []
+            if mkp_blacklist_df is not None and not mkp_blacklist_df.empty:
+                for _, row in mkp_blacklist_df.iterrows():
+                    item_name = str(row.get("Item Name", "")).strip()
+                    if item_name:  # Only include rows with at least an item name
+                        mkp_blacklist.append({
+                            "item_name": item_name,
+                            "item_code": str(row.get("Item Code/SKU", "")).strip(),
+                            "category": str(row.get("Category", "")).strip(),
+                            "reason": str(row.get("Reason", "")).strip()
+                        })
+            
+            if mkp_blacklist:
+                st.info(f"📋 {len(mkp_blacklist)} item(s) in blacklist")
     else:
         # Buying channels disabled - create empty DataFrame
         buying_channels_df = pd.DataFrame(columns=["Channel Type", "Supplier", "Vendor Code", "Link", "Comments"])
         allow_mkp = False
         mkp_limit = 0
+        mkp_blacklist = []
     
     # Set enable_stream1 based on buying channels toggle
     enable_stream1 = enable_buying_channels
@@ -1325,7 +1392,8 @@ if st.session_state.show_output:
             "enabled": enable_buying_channels if 'enable_buying_channels' in locals() else True,
             "channels": buying_channels_df.to_dict('records') if 'buying_channels_df' in locals() and buying_channels_df is not None and not buying_channels_df.empty else [],
             "allow_marketplace": allow_mkp if 'allow_mkp' in locals() else False,
-            "marketplace_limit": mkp_limit if 'mkp_limit' in locals() else 0
+            "marketplace_limit": mkp_limit if 'mkp_limit' in locals() else 0,
+            "marketplace_blacklist": mkp_blacklist if 'mkp_blacklist' in locals() else []
         },
         "stream2": {
             "enabled": enable_stream2 if 'enable_stream2' in locals() else True,
@@ -1396,6 +1464,7 @@ if st.session_state.show_output:
                 ws1.append(["Buying Channels Enabled", output_data["buying_channels"]["enabled"]])
                 ws1.append(["Allow Marketplace", output_data["buying_channels"]["allow_marketplace"]])
                 ws1.append(["Marketplace Limit", output_data["buying_channels"]["marketplace_limit"]])
+                ws1.append(["Marketplace Blacklist Items", len(output_data["buying_channels"]["marketplace_blacklist"])])
                 ws1.append(["Stream 2 Enabled", output_data["stream2"]["enabled"]])
                 ws1.append(["Tactical Threshold", output_data["stream2"]["tactical_threshold"]])
                 ws1.append(["Tactical Enabled", output_data["stream2"]["tactical"]["enabled"]])
@@ -1440,13 +1509,28 @@ if st.session_state.show_output:
                 else:
                     ws3_bc.append(["No buying channels defined"])
                 
-                # Sheet 4: Summary
-                ws4 = wb.create_sheet("Summary")
-                ws4.append(["Item", "Count"])
-                ws4.append(["End Markets", len(output_data["scope"]["end_markets"])])
-                ws4.append(["Business User Markets", len(output_data["scope"]["business_user_markets"])])
-                ws4.append(["Suppliers", len(output_data["supplier_pool"]["suppliers"])])
-                ws4.append(["Buying Channels", len(output_data["buying_channels"]["channels"])])
+                # Sheet 4: Marketplace Blacklist
+                ws4_mkp = wb.create_sheet("Marketplace Blacklist")
+                if output_data["buying_channels"]["marketplace_blacklist"]:
+                    ws4_mkp.append(["Item Name", "Item Code/SKU", "Category", "Reason"])
+                    for item in output_data["buying_channels"]["marketplace_blacklist"]:
+                        ws4_mkp.append([
+                            item.get("item_name", ""),
+                            item.get("item_code", ""),
+                            item.get("category", ""),
+                            item.get("reason", "")
+                        ])
+                else:
+                    ws4_mkp.append(["No blacklist items defined"])
+                
+                # Sheet 5: Summary
+                ws5 = wb.create_sheet("Summary")
+                ws5.append(["Item", "Count"])
+                ws5.append(["End Markets", len(output_data["scope"]["end_markets"])])
+                ws5.append(["Business User Markets", len(output_data["scope"]["business_user_markets"])])
+                ws5.append(["Suppliers", len(output_data["supplier_pool"]["suppliers"])])
+                ws5.append(["Buying Channels", len(output_data["buying_channels"]["channels"])])
+                ws5.append(["Marketplace Blacklist Items", len(output_data["buying_channels"]["marketplace_blacklist"])])
                 
                 excel_buffer = io.BytesIO()
                 wb.save(excel_buffer)
@@ -1499,6 +1583,8 @@ if st.session_state.show_output:
         ["Suppliers", len(output_data['supplier_pool']['suppliers'])],
         ["Buying Channels", len(output_data['buying_channels']['channels'])],
         ["Marketplace Enabled", "Yes" if output_data['buying_channels']['allow_marketplace'] else "No"],
+        ["Marketplace Limit", f"£{output_data['buying_channels']['marketplace_limit']}" if output_data['buying_channels']['allow_marketplace'] else "N/A"],
+        ["Marketplace Blacklist Items", len(output_data['buying_channels']['marketplace_blacklist'])],
         ["Tactical Threshold", f"£{output_data['stream2']['tactical_threshold']}"],
     ], columns=["Item", "Value"])
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
